@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Truck, MapPin, Clock, Package, CheckCircle, XCircle, Navigation, ArrowRight } from 'lucide-react'
 import StatusBadge from '../components/StatusBadge'
-import { subscribePickupJobs, updateJobStatus } from '../lib/firestoreService'
+import { subscribePickupJobs } from '../lib/firestoreService'
+import { apiRequest } from '../lib/api'
 
 const stepLabels = ['Job Accepted', 'En Route to Pickup', 'Food Picked Up', 'En Route to Dropoff', 'Delivered']
 
@@ -40,7 +41,10 @@ export default function DriverPage() {
   const handleAccept = async (job) => {
     setError('')
     try {
-      await updateJobStatus(job.id, 'accepted')
+      await apiRequest(`/jobs/${job.id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'accepted' }),
+      })
       setActiveJob(job)
       setStep(0)
       setDelivered(false)
@@ -52,7 +56,10 @@ export default function DriverPage() {
   const handleDecline = async (id) => {
     setError('')
     try {
-      await updateJobStatus(id, 'declined')
+      await apiRequest(`/jobs/${id}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: 'declined' }),
+      })
       if (activeJob?.id === id) setActiveJob(null)
     } catch (err) {
       setError(err.message || 'Could not decline this pickup job.')
@@ -68,7 +75,10 @@ export default function DriverPage() {
       }[step + 1]
       if (nextStepStatus) {
         try {
-          await updateJobStatus(activeJob.id, nextStepStatus)
+          await apiRequest(`/jobs/${activeJob.id}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: nextStepStatus }),
+          })
         } catch (err) {
           setError(err.message || 'Could not update pickup progress.')
           return
@@ -77,7 +87,11 @@ export default function DriverPage() {
       setStep(s => s + 1)
     } else {
       try {
-        await updateJobStatus(activeJob.id, 'completed')
+        // Backend marks donation as Handoff Verified when job completes
+        await apiRequest(`/jobs/${activeJob.id}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: 'completed' }),
+        })
         setDelivered(true)
       } catch (err) {
         setError(err.message || 'Could not confirm delivery.')

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Bot, CheckCircle, AlertTriangle, ChevronRight } from 'lucide-react'
 import AgentLog from '../components/AgentLog'
 import StatusBadge from '../components/StatusBadge'
-import { createDonation, subscribeDonation, subscribeAgentLogs } from '../lib/firestoreService'
+import { subscribeDonation, subscribeAgentLogs } from '../lib/firestoreService'
+import { apiRequest } from '../lib/api'
 
 const followUpQuestions = {
   storage: 'What is the current storage temperature or method (e.g. hot-held above 60°C, refrigerated below 5°C)?',
@@ -54,7 +55,11 @@ export default function DonorPage() {
     setLoading(true)
     setError(null)
     try {
-      const result = await createDonation(form)
+      // Call FastAPI backend — it saves to Firestore AND runs the agent
+      const result = await apiRequest('/donations', {
+        method: 'POST',
+        body: JSON.stringify({ ...form, quantity: parseFloat(form.quantity) }),
+      })
       setDonationId(result.id)
       setSubmitted(true)
     } catch (err) {

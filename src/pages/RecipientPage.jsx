@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { CheckCircle, XCircle, Package, Clock, MapPin, Thermometer } from 'lucide-react'
 import StatusBadge from '../components/StatusBadge'
-import { getRecipients, subscribeAvailableDonations, respondToDonation } from '../lib/firestoreService'
+import { getRecipients, subscribeAvailableDonations } from '../lib/firestoreService'
+import { apiRequest } from '../lib/api'
 
 const categoryColor = {
   cooked: 'bg-orange-100 text-orange-700',
@@ -37,7 +38,11 @@ export default function RecipientPage() {
     setBusyKey(key)
     setError('')
     try {
-      await respondToDonation(donationId, recipientId, action)
+      // Call backend so agent can replan on decline
+      await apiRequest(`/donations/${donationId}/responses`, {
+        method: 'POST',
+        body: JSON.stringify({ recipientId, action }),
+      })
     } catch (err) {
       setError(err.message || 'Could not submit your response.')
     } finally {
