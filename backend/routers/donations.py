@@ -141,49 +141,38 @@ def add_response(donation_id: str, data: RecipientResponse):
         if not recipient or not recipient.get("address") or not donation.get("pickupAddress"):
             raise HTTPException(status_code=409, detail="Pickup and dropoff addresses are required before a job can be created")
 
+        allocation = donation.get("allocation", [])
+        allocation_index = next(
+            (i for i, item in enumerate(allocation) if item.get("recipientId") == data.recipientId),
+            None,
+        )
+        if allocation_index is None:
+            raise HTTPException(status_code=404, detail="No allocation for this recipient")
+        if allocation[allocation_index].get("status") != "pending":
+            raise HTTPException(status_code=409, detail="This allocation has already been answered")
+
+        accepted_quantity = allocation[allocation_index]["quantity"]
         job_ref = db.collection("pickupJobs").document(f"{donation_id}_{data.recipientId}")
-        @firestore.transactional
-        def accept_allocation(transaction):
-            current_snapshot = transaction.get(ref)
-            if not current_snapshot.exists:
-                raise HTTPException(status_code=404, detail="Donation not found")
-            current = current_snapshot.to_dict()
-            if current.get("state") not in {"Planning Redistribution", "Coordinating Pickup"}:
-                raise HTTPException(status_code=409, detail="Donation is not accepting recipient responses")
-            current_allocation = current.get("allocation", [])
-            current_index = next(
-                (index for index, item in enumerate(current_allocation) if item.get("recipientId") == data.recipientId),
-                None,
-            )
-            if current_index is None:
-                raise HTTPException(status_code=404, detail="No allocation for this recipient")
-            if current_allocation[current_index].get("status") != "pending":
-                raise HTTPException(status_code=409, detail="This allocation has already been answered")
+        allocation[allocation_index]["status"] = "accepted"
+        allocation[allocation_index]["jobId"] = job_ref.id
 
-            accepted_quantity = current_allocation[current_index]["quantity"]
-            current_allocation[current_index]["status"] = "accepted"
-            current_allocation[current_index]["jobId"] = job_ref.id
-            transaction.update(ref, {"allocation": current_allocation, "state": "Coordinating Pickup"})
-            transaction.set(job_ref, {
-                "donationId": donation_id,
-                "recipientId": data.recipientId,
-                "food": current["food"],
-                "quantity": f"{accepted_quantity} {current['unit']}",
-                "pickupName": current.get("donorName") or "Donor",
-                "pickupAddress": current["pickupAddress"],
-                "dropoffName": recipient["name"],
-                "dropoffAddress": recipient["address"],
-                "deadline": current.get("deadline") or "",
-                "distance": None,
-                "duration": None,
-                "status": "available",
-                "createdAt": firestore.SERVER_TIMESTAMP,
-            })
-            return accepted_quantity, current["unit"]
-
-        accepted_quantity, unit = accept_allocation(db.transaction())
-        message = f"{recipient['name']} accepted {accepted_quantity} {unit}; a volunteer pickup job was created."
-        append_log(db, donation_id, "coordinate", message)
+        ref.update({"allocation": allocation, "state": "Coordinating Pickup"})
+        job_ref.set({
+            "donationId": donation_id,
+            "recipientId": data.recipientId,
+            "food": donation["food"],
+            "quantity": f"{accepted_quantity} {donation['unit']}",
+            "pickupName": donation.get("donorName") or "Donor",
+            "pickupAddress": donation["pickupAddress"],
+            "dropoffName": recipient["name"],
+            "dropoffAddress": recipient["address"],
+            "deadline": donation.get("deadline") or "",
+            "distance": None,
+            "duration": None,
+            "status": "available",
+            "createdAt": firestore.SERVER_TIMESTAMP,
+        })
+        append_log(db, donation_id, "coordinate", f"{recipient['name']} accepted {accepted_quantity} {donation['unit']}; a volunteer pickup job was created.")
     else:
         allocation = donation.get("allocation", [])
         allocation_index = next(

@@ -1,6 +1,6 @@
 import {
   collection, doc, onSnapshot,
-  query, where, orderBy, getDocs
+  query, where, getDocs
 } from 'firebase/firestore'
 import { db } from './firebase'
 import { apiRequest } from './api'
@@ -8,8 +8,9 @@ import { apiRequest } from './api'
 // ── Donations ──────────────────────────────────────────────
 
 export function subscribeDonations(callback) {
-  const q = query(collection(db, 'donations'), orderBy('createdAt', 'desc'))
-  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(collection(db, 'donations'), snap =>
+    callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  )
 }
 
 export function subscribeDonation(id, callback) {
@@ -34,8 +35,10 @@ export async function appendAgentLog(donationId, entry) {
 }
 
 export function subscribeAgentLogs(donationId, callback) {
-  const q = query(collection(db, 'donations', donationId, 'agentLogs'), orderBy('time', 'asc'))
-  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(
+    collection(db, 'donations', donationId, 'agentLogs'),
+    snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  )
 }
 
 // ── Recipients ─────────────────────────────────────────────
@@ -48,8 +51,7 @@ export async function getRecipients() {
 export function subscribeAvailableDonations(callback) {
   const q = query(
     collection(db, 'donations'),
-    where('state', 'in', ['Planning Redistribution', 'Coordinating Pickup']),
-    orderBy('createdAt', 'desc')
+    where('state', 'in', ['Planning Redistribution', 'Coordinating Pickup'])
   )
   return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
 }
@@ -78,8 +80,9 @@ export async function updateJobStatus(jobId, status) {
 // ── Approvals ──────────────────────────────────────────────
 
 export function subscribeApprovals(callback) {
-  const q = query(collection(db, 'approvals'), orderBy('requestedAt', 'desc'))
-  return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+  return onSnapshot(collection(db, 'approvals'),
+    snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  )
 }
 
 export async function resolveApproval(approvalId, status) {

@@ -12,7 +12,7 @@ CATEGORIES = ("cooked", "bakery", "produce", "packaged")
 
 def classify_food(food, notes=None):
     api_key = os.getenv("GEMINI_API_KEY")
-    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    model = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
     if not api_key:
         return _keyword_category(food, notes), "GEMINI_API_KEY is not configured; used keyword classification."
 
@@ -59,10 +59,15 @@ def classify_food(food, notes=None):
             if confidence >= 0.6:
                 return category, f"Gemini classified the donation as {category} (confidence {confidence:.2f})."
             return None, f"Gemini classification confidence was too low ({confidence:.2f}); coordinator review required."
-    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, TypeError, ValueError) as error:
+    except urllib.error.HTTPError as error:
+        body = error.read().decode("utf-8", errors="replace")
+        print(f"[Gemini] HTTP {error.code}: {body}")
         fallback = _keyword_category(food, notes)
-        result = f"keyword classification returned {fallback or 'no category'}"
-        return fallback, f"Gemini classification failed ({type(error).__name__}); {result}."
+        return fallback, f"Gemini classification failed (HTTP {error.code}); keyword classification returned {fallback or 'no category'}."
+    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, TypeError, ValueError) as error:
+        print(f"[Gemini] Error: {type(error).__name__}: {error}")
+        fallback = _keyword_category(food, notes)
+        return fallback, f"Gemini classification failed ({type(error).__name__}); keyword classification returned {fallback or 'no category'}."
 
     return None, "Gemini returned an invalid category or confidence value; coordinator review is required."
 
