@@ -1,3 +1,5 @@
+import hashlib
+
 from fastapi import APIRouter, HTTPException
 from firebase_admin import firestore
 from firebase_client import get_db
@@ -6,10 +8,38 @@ from models import RecipientCreate
 router = APIRouter(prefix="/recipients", tags=["recipients"])
 
 
+def _normalized_identity(name, location):
+    return (
+        " ".join(name.casefold().split()),
+        " ".join(location.casefold().split()),
+    )
+
+
 @router.post("")
 def create_recipient(data: RecipientCreate):
     db = get_db()
-    ref = db.collection("recipients").document()
+    collection = db.collection("recipients")
+    identity = _normalized_identity(data.name, data.location)
+    existing = [
+        doc for doc in collection.stream()
+        if _normalized_identity(
+            str(doc.to_dict().get("name", "")),
+            str(doc.to_dict().get("location", "")),
+        ) == identity
+    ]
+    if existing:
+        canonical = max(
+            existing,
+            key=lambda doc: sum(bool(value) for value in doc.to_dict().values()),
+        )
+        return {"id": canonical.id, **canonical.to_dict()}
+
+    identity_hash = hashlib.sha256("|".join(identity).encode("utf-8")).hexdigest()
+    ref = collection.document(f"recipient_{identity_hash[:32]}")
+    snapshot = ref.get()
+    if snapshot.exists:
+        return {"id": snapshot.id, **snapshot.to_dict()}
+
     payload = data.model_dump()
     payload["createdAt"] = firestore.SERVER_TIMESTAMP
     ref.set(payload)

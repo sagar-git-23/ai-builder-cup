@@ -5,6 +5,7 @@ Usage: python seed.py
 import firebase_admin
 from firebase_admin import credentials, firestore
 from dotenv import load_dotenv
+import hashlib
 import os
 
 load_dotenv()
@@ -60,7 +61,25 @@ recipients = [
 
 print("Seeding recipients...")
 for r in recipients:
-    ref = db.collection("recipients").document()
+    identity = (
+        " ".join(r["name"].casefold().split()),
+        " ".join(r["location"].casefold().split()),
+    )
+    existing = next(
+        (
+            doc for doc in db.collection("recipients").stream()
+            if (
+                " ".join(str(doc.to_dict().get("name", "")).casefold().split()),
+                " ".join(str(doc.to_dict().get("location", "")).casefold().split()),
+            ) == identity
+        ),
+        None,
+    )
+    if existing:
+        print(f"  = {r['name']} already exists")
+        continue
+    identity_hash = hashlib.sha256("|".join(identity).encode("utf-8")).hexdigest()
+    ref = db.collection("recipients").document(f"seed_{identity_hash[:32]}")
     ref.set(r)
     print(f"  + {r['name']}")
 
