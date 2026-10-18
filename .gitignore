@@ -13,3 +13,6 @@ backend/*.pyc
 backend/venv/
 backend/.venv/
 backend/venvvenv/
+backend/test_gemini.py
+backend/list_models.py
+backend/gemini_result.txt
