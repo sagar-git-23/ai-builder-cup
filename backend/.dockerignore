@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+venv/
+.venv/
+venvvenv/
+.env
+serviceAccountKey.json
+*.txt.bak
+test_gemini.py
+list_models.py
+gemini_result.txt
+seed.py
