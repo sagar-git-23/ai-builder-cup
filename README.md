@@ -1,48 +1,232 @@
-# ai-builder-cup — FoodRescue Agent
+# FoodRescue Agent
 
-FoodRescue Agent is a prototype for coordinating surplus-food donations across donors, recipient organizations, volunteer drivers, and coordinators. The frontend uses Firebase Firestore for live updates. A FastAPI backend now owns writes that trigger coordination.
+An agentic AI system that intelligently coordinates surplus food redistribution from restaurants, bakeries and grocery stores to community kitchens, NGOs and shelters.
 
-## Coordination flow
+Built with **Gemini AI · Firebase · FastAPI · React · Google Cloud Run**
 
-1. A donor submits the food description, amount and unit, preparation time, pickup deadline, storage details, organization, pickup town/suburb, and street address.
-2. The backend asks Gemini to classify the description as `cooked`, `bakery`, `produce`, or `packaged`. It sends the food description and optional packaging notes only. Gemini does not decide food safety, choose actions, or write to Firestore.
-3. Deterministic backend checks require preparation time, pickup deadline, storage information, pickup town/suburb, and street address. Missing details pause the donation for review. The system does not certify food as safe.
-4. The backend matches category, quantity unit, capacity, and location against recipient records. A complete split across multiple recipients waits for coordinator approval.
-5. Recipients select their organization and accept or decline their proposed allocation. Acceptance creates a pickup job; a decline triggers a deterministic replan, with a coordinator approval step if the replacement plan is split.
-6. Drivers update pickup/delivery progress. The donation becomes `Handoff Verified` only after every linked pickup job is completed. Agent decisions and state changes are recorded in each donation's `agentLogs` subcollection.
+---
 
-If Gemini is unavailable, the backend records that fact and tries a small deterministic keyword classifier. If the category remains uncertain, it holds the donation for review instead of making an offer.
+## What it does
+
+Every day, food businesses generate surplus food that goes to waste while community organisations struggle to source donations. FoodRescue Agent automates the entire coordination workflow:
+
+- Understands food listings using Gemini AI
+- Validates eligibility against food-safety rules
+- Matches donations to suitable recipients by category, capacity and location
+- Coordinates pickups through volunteer drivers
+- Recovers automatically when a recipient cancels or transport fails
+- Requires human approval for consequential decisions
+- Records a full audit trail of every agent decision
+
+---
+
+## Roles
+
+| Role | What they do |
+|---|---|
+| **Donor** | Restaurants, bakeries, grocery stores — submit surplus food |
+| **Recipient** | Community kitchens, NGOs, shelters — register and accept donations |
+| **Driver** | Volunteer drivers — accept pickup jobs and confirm handoffs |
+| **Coordinator** | Admin — monitor agent activity, approve split allocations, review held donations |
+
+---
+
+## How the agent works
+
+1. Donor submits food description, quantity, storage details and pickup deadline
+2. Gemini classifies the food category (`cooked`, `bakery`, `produce`, `packaged`)
+3. Backend validates required fields — missing info holds the donation for review
+4. Agent searches recipients by category, capacity, unit and location
+5. Single recipient → directly coordinated. Split allocation → coordinator approval required
+6. Recipient accepts → pickup job created for drivers automatically
+7. Recipient declines → agent replans with alternative recipients
+8. Driver completes delivery → donation marked `Handoff Verified`
+
+> If Gemini is unavailable, the backend falls back to keyword classification. Food safety is never inferred from appearance alone.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React + Vite + Tailwind CSS |
+| Backend | FastAPI (Python) |
+| Database | Firebase Firestore |
+| AI | Google Gemini (`gemini-3.5-flash-lite`) |
+| Hosting | Google Cloud Run |
+| Auth | Coordinator PIN gate (demo) |
+
+---
+
+## Project structure
+
+```
+foodrescue-agent/
+├── src/
+│   ├── pages/
+│   │   ├── Landing.jsx          # Role selector
+│   │   ├── DonorPage.jsx        # Submit surplus food
+│   │   ├── RecipientPage.jsx    # Register + accept donations
+│   │   ├── DriverPage.jsx       # Accept jobs + confirm delivery
+│   │   └── CoordinatorPage.jsx  # Dashboard + approvals
+│   ├── components/
+│   │   ├── Navbar.jsx
+│   │   ├── StatusBadge.jsx
+│   │   └── AgentLog.jsx
+│   └── lib/
+│       ├── firebase.js          # Firebase config
+│       ├── firestoreService.js  # Firestore listeners
+│       └── api.js               # FastAPI client
+├── backend/
+│   ├── main.py                  # FastAPI app
+│   ├── coordination.py          # Agent logic + Gemini
+│   ├── models.py                # Pydantic models
+│   ├── firebase_client.py       # Firebase Admin SDK
+│   ├── seed.py                  # Seed Firestore with dummy data
+│   ├── routers/
+│   │   ├── donations.py
+│   │   ├── recipients.py
+│   │   ├── jobs.py
+│   │   └── approvals.py
+│   ├── Dockerfile
+│   └── requirements.txt
+├── Dockerfile                   # Frontend container
+├── nginx.conf                   # SPA routing
+└── .env.example                 # Environment variable template
+```
+
+---
 
 ## Local setup
 
-### Firebase and frontend
+### Prerequisites
+- Node.js 20+
+- Python 3.11+
+- Firebase project with Firestore enabled
+- Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
 
-1. Create a Firebase project and enable Firestore. Configure the web app values in the root `.env` using [.env.example](./.env.example).
-2. Set `VITE_API_BASE_URL=http://localhost:8000`.
-3. Install and run the frontend from the repository root:
+### 1. Frontend
 
-   ```powershell
-   npm install
-   npm run dev
-   ```
+Copy `.env.example` to `.env` and fill in your Firebase config:
 
-### Backend and Gemini
+```bash
+cp .env.example .env
+```
 
-1. Use Python 3.15 and create a Firebase service account with only the Firestore permissions the prototype needs. Save its JSON key as `backend/serviceAccountKey.json` (or set `GOOGLE_APPLICATION_CREDENTIALS` to its path).
-2. Copy `backend/.env.example` to `backend/.env`, then set `GEMINI_API_KEY` there. Keep this key server-side; do not put it in a `VITE_` variable or commit it.
-3. Install and start the API from the `backend` directory:
+```env
+VITE_FIREBASE_API_KEY=your_firebase_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_API_BASE_URL=http://localhost:8000
+```
 
-   ```powershell
-   cd backend
-   py -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   pip install -r requirements.txt
-   python -m unittest discover -s tests
-   uvicorn main:app --reload
-   ```
+```bash
+npm install
+npm run dev
+```
 
-4. Open `http://localhost:8000/docs` and create recipient records with `POST /recipients`. Each recipient needs a name, location, address, accepted categories, capacity, and `capacityUnit` matching the donor's unit (for example, `portions`). Matching never assumes different units are interchangeable.
+Frontend runs at `http://localhost:5173`
 
-## Prototype limitations and deployment warning
+### 2. Backend
 
-The API currently has no authentication or authorization, and the coordinator PIN is a frontend-only demo gate. Firebase client reads also require appropriate Firestore rules. Run this prototype locally with trusted test data only; before deployment, add authenticated role-based access, server-side authorization, rate limits, and production Firestore rules. Do not use this prototype as a food-safety determination system.
+Copy `backend/.env.example` to `backend/.env`:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+```env
+GOOGLE_APPLICATION_CREDENTIALS=serviceAccountKey.json
+FIREBASE_PROJECT_ID=your_project_id
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
+
+Place your Firebase service account key at `backend/serviceAccountKey.json`
+
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate        # Windows
+pip install -r requirements.txt
+uvicorn main:app --reload
+```
+
+Backend runs at `http://localhost:8000`  
+API docs at `http://localhost:8000/docs`
+
+### 3. Seed dummy data
+
+```bash
+cd backend
+python seed.py
+```
+
+This populates Firestore with 4 recipients, 3 donations, 2 pickup jobs and 1 approval.
+
+---
+
+## Deployment (Google Cloud Run)
+
+### Backend
+
+```bash
+cd backend
+
+gcloud secrets create GEMINI_API_KEY --data-file=- <<< "your_key"
+gcloud secrets create FIREBASE_SA --data-file=serviceAccountKey.json
+
+gcloud run deploy foodrescue-backend \
+  --source . \
+  --region australia-southeast1 \
+  --platform managed \
+  --allow-unauthenticated \
+  --set-secrets="GEMINI_API_KEY=GEMINI_API_KEY:latest" \
+  --set-env-vars="FIREBASE_PROJECT_ID=your_project_id,GEMINI_MODEL=gemini-3.5-flash-lite"
+```
+
+### Frontend
+
+Update `VITE_API_BASE_URL` in `.env` with the backend Cloud Run URL, then:
+
+```bash
+gcloud run deploy foodrescue-frontend \
+  --source . \
+  --region australia-southeast1 \
+  --platform managed \
+  --allow-unauthenticated
+```
+
+---
+
+## Coordinator access
+
+PIN: `admin123`
+
+---
+
+## Donation workflow states
+
+| State | Meaning |
+|---|---|
+| `Submitted` | Donor submitted the form |
+| `Extracting Details` | Agent reviewing food details |
+| `Eligibility Check` | Validating storage and safety fields |
+| `Planning Redistribution` | Agent searching for recipients |
+| `Awaiting Human Approval` | Split allocation needs coordinator sign-off |
+| `Coordinating Pickup` | Recipients confirmed, driver job created |
+| `Recovering — Replanning` | Recipient declined, agent finding alternatives |
+| `Handoff Verified` | Driver delivered, donation complete |
+| `Held for Review` | Missing info or no recipient match found |
+
+---
+
+## Important notes
+
+- This is a hackathon prototype — the coordinator PIN is a frontend-only demo gate
+- Firestore rules are currently open (test mode) — add proper rules before production
+- The system does not certify food as safe — eligibility is based on documented fields only
+- Gemini classifies food category only — it does not make food safety decisions
