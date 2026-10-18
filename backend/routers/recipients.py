@@ -13,7 +13,7 @@ def create_recipient(data: RecipientCreate):
     payload = data.model_dump()
     payload["createdAt"] = firestore.SERVER_TIMESTAMP
     ref.set(payload)
-    return {"id": ref.id, **payload}
+    return {"id": ref.id, **data.model_dump()}
 
 
 @router.get("")

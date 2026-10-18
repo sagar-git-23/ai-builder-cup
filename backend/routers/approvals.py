@@ -15,7 +15,7 @@ def create_approval(data: ApprovalCreate):
     payload["status"] = "pending"
     payload["requestedAt"] = firestore.SERVER_TIMESTAMP
     ref.set(payload)
-    return {"id": ref.id, **payload}
+    return {"id": ref.id, **data.model_dump(), "status": "pending"}
 
 
 @router.get("")
