@@ -227,6 +227,5 @@ PIN: `admin123`
 ## Important notes
 
 - This is a hackathon prototype — the coordinator PIN is a frontend-only demo gate
-- Firestore rules are currently open (test mode) — add proper rules before production
 - The system does not certify food as safe — eligibility is based on documented fields only
 - Gemini classifies food category only — it does not make food safety decisions
