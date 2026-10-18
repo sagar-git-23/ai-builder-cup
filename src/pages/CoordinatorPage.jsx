@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { CheckCircle, XCircle, ChevronDown, ChevronUp, Bot, AlertTriangle, BarChart2, Lock, Eye, EyeOff } from 'lucide-react'
 import StatusBadge from '../components/StatusBadge'
 import AgentLog from '../components/AgentLog'
-import { subscribeDonations, subscribeApprovals, resolveApproval, subscribeAgentLogs } from '../lib/firestoreService'
+import { subscribeDonations, subscribeApprovals, resolveApproval, subscribeAgentLogs, coordinateDonation } from '../lib/firestoreService'
 
 const ADMIN_PIN = 'admin123'
 
@@ -57,6 +57,8 @@ function PinGate({ onUnlock }) {
 function DonationRow({ d }) {
   const [expanded, setExpanded] = useState(false)
   const [agentLog, setAgentLog] = useState([])
+  const [retrying, setRetrying] = useState(false)
+  const [retryError, setRetryError] = useState('')
 
   useEffect(() => {
     if (!expanded) return
@@ -68,6 +70,18 @@ function DonationRow({ d }) {
     })
     return () => unsub()
   }, [expanded, d.id])
+
+  const retry = async () => {
+    setRetrying(true)
+    setRetryError('')
+    try {
+      await coordinateDonation(d.id)
+    } catch (err) {
+      setRetryError(err.message || 'Could not retry coordination.')
+    } finally {
+      setRetrying(false)
+    }
+  }
 
   return (
     <div className="bg-white rounded-2xl shadow overflow-hidden">
@@ -87,6 +101,18 @@ function DonationRow({ d }) {
 
       {expanded && (
         <div className="border-t px-5 py-4 space-y-4">
+          {d.state === 'Held for Review' && (
+            <div>
+              <button
+                onClick={retry}
+                disabled={retrying}
+                className="text-sm font-medium text-purple-700 underline disabled:opacity-50"
+              >
+                {retrying ? 'Retrying coordination…' : 'Retry coordination'}
+              </button>
+              {retryError && <p className="text-sm text-red-600 mt-2" role="alert">{retryError}</p>}
+            </div>
+          )}
           {d.allocation?.length > 0 && (
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Allocation</p>
@@ -125,6 +151,7 @@ export default function CoordinatorPage() {
   const [donations, setDonations] = useState([])
   const [approvals, setApprovals] = useState([])
   const [loading, setLoading] = useState(true)
+  const [actionError, setActionError] = useState('')
 
   useEffect(() => {
     if (!unlocked) return
@@ -137,6 +164,15 @@ export default function CoordinatorPage() {
 
   const pending = approvals.filter(a => a.status === 'pending')
   const resolved = approvals.filter(a => a.status !== 'pending')
+
+  const handleResolve = async (approvalId, status) => {
+    setActionError('')
+    try {
+      await resolveApproval(approvalId, status)
+    } catch (err) {
+      setActionError(err.message || 'Could not resolve approval.')
+    }
+  }
 
   const metrics = [
     { label: 'Total Donations', value: donations.length, color: 'text-gray-800' },
@@ -167,19 +203,20 @@ export default function CoordinatorPage() {
             <AlertTriangle size={17} className="text-amber-500" /> Pending Approvals
           </h2>
           <div className="space-y-3">
+            {actionError && <p className="text-sm text-red-600" role="alert">{actionError}</p>}
             {pending.map(ap => (
               <div key={ap.id} className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
                 <p className="font-semibold text-gray-800 mb-1">{ap.donorName}</p>
                 <p className="text-sm text-gray-600 mb-3">{ap.description}</p>
                 <div className="flex gap-3">
                   <button
-                    onClick={() => resolveApproval(ap.id, 'approved')}
+                    onClick={() => handleResolve(ap.id, 'approved')}
                     className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg"
                   >
                     <CheckCircle size={15} /> Approve
                   </button>
                   <button
-                    onClick={() => resolveApproval(ap.id, 'rejected')}
+                    onClick={() => handleResolve(ap.id, 'rejected')}
                     className="flex items-center gap-1.5 border border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium px-4 py-1.5 rounded-lg"
                   >
                     <XCircle size={15} /> Reject

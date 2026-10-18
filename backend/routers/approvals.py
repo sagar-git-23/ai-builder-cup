@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from firebase_admin import firestore
 from firebase_client import get_db
+from coordination import append_log
 from models import ApprovalCreate, ApprovalResolve
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
@@ -32,17 +33,23 @@ def list_approvals(status: str = None):
 def resolve_approval(approval_id: str, data: ApprovalResolve):
     db = get_db()
     ref = db.collection("approvals").document(approval_id)
-    if not ref.get().exists:
+    snapshot = ref.get()
+    if not snapshot.exists:
         raise HTTPException(status_code=404, detail="Approval not found")
+    if snapshot.to_dict().get("status") != "pending":
+        raise HTTPException(status_code=409, detail="Approval has already been resolved")
     ref.update({"status": data.status, "resolvedAt": firestore.SERVER_TIMESTAMP})
 
-    # If approved, move linked donation to Coordinating Pickup
-    if data.status == "approved":
-        approval = ref.get().to_dict()
-        donation_id = approval.get("donationId")
-        if donation_id:
-            db.collection("donations").document(donation_id).update({
-                "state": "Coordinating Pickup"
-            })
+    approval = ref.get().to_dict()
+    donation_id = approval.get("donationId")
+    if donation_id:
+        state = "Planning Redistribution" if data.status == "approved" else "Held for Review"
+        db.collection("donations").document(donation_id).update({"state": state})
+        append_log(
+            db,
+            donation_id,
+            "approval",
+            f"Coordinator {data.status} the proposed allocation.",
+        )
 
     return {"id": approval_id, "status": data.status}

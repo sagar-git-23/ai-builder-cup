@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Bot, CheckCircle, AlertTriangle, ChevronRight } from 'lucide-react'
 import AgentLog from '../components/AgentLog'
 import StatusBadge from '../components/StatusBadge'
@@ -7,11 +7,26 @@ import { createDonation, subscribeDonation, subscribeAgentLogs } from '../lib/fi
 const followUpQuestions = {
   storage: 'What is the current storage temperature or method (e.g. hot-held above 60°C, refrigerated below 5°C)?',
   time: 'What time was the food prepared or last temperature-checked?',
-  packaging: 'Is the food individually packaged or in bulk containers?',
+  deadline: 'What is the latest safe pickup time?',
+  location: 'What suburb or town is the pickup in?',
+  address: 'What is the pickup street address?',
+  category: 'Please clarify what kind of food this is.',
+  recipients: 'No complete recipient match is available yet. A coordinator will review the donation.',
 }
 
 export default function DonorPage() {
-  const [form, setForm] = useState({ food: '', quantity: '', unit: 'portions', deadline: '', storage: '', notes: '' })
+  const [form, setForm] = useState({
+    donorName: '',
+    food: '',
+    quantity: '',
+    unit: 'portions',
+    preparedAt: '',
+    deadline: '',
+    storage: '',
+    location: '',
+    pickupAddress: '',
+    notes: '',
+  })
   const [submitted, setSubmitted] = useState(false)
   const [donationId, setDonationId] = useState(null)
   const [donation, setDonation] = useState(null)
@@ -19,38 +34,31 @@ export default function DonorPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  const detectMissing = () => {
-    const missing = []
-    if (!form.storage) missing.push('storage')
-    if (!form.deadline) missing.push('time')
-    if (!form.notes) missing.push('packaging')
-    return missing
-  }
+  useEffect(() => {
+    if (!donationId) return undefined
+    const unsubscribeDonation = subscribeDonation(donationId, setDonation)
+    const unsubscribeLogs = subscribeAgentLogs(donationId, logs => {
+      setAgentLog(logs.map(log => ({
+        ...log,
+        time: log.time?.toDate?.()?.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) ?? '--:--',
+      })))
+    })
+    return () => {
+      unsubscribeDonation()
+      unsubscribeLogs()
+    }
+  }, [donationId])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
     try {
-      const missing = detectMissing()
-      const docRef = await createDonation({
-        ...form,
-        missingFields: missing,
-      })
-
-      setDonationId(docRef.id)
+      const result = await createDonation(form)
+      setDonationId(result.id)
       setSubmitted(true)
-
-      // Subscribe to real-time updates
-      subscribeDonation(docRef.id, setDonation)
-      subscribeAgentLogs(docRef.id, (logs) => {
-        setAgentLog(logs.map(l => ({
-          ...l,
-          time: l.time?.toDate?.()?.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' }) ?? '--:--',
-        })))
-      })
     } catch (err) {
-      setError('Failed to submit donation. Please try again.')
+      setError(err.message || 'Failed to submit donation. Please try again.')
       console.error(err)
     } finally {
       setLoading(false)
@@ -62,7 +70,18 @@ export default function DonorPage() {
     setDonationId(null)
     setDonation(null)
     setAgentLog([])
-    setForm({ food: '', quantity: '', unit: 'portions', deadline: '', storage: '', notes: '' })
+    setForm({
+      donorName: '',
+      food: '',
+      quantity: '',
+      unit: 'portions',
+      preparedAt: '',
+      deadline: '',
+      storage: '',
+      location: '',
+      pickupAddress: '',
+      notes: '',
+    })
   }
 
   return (
@@ -72,6 +91,17 @@ export default function DonorPage() {
 
       {!submitted ? (
         <form onSubmit={handleSubmit} className="space-y-5 bg-white rounded-2xl shadow p-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Donor organization *</label>
+            <input
+              required
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              placeholder="e.g. Riverside Restaurant"
+              value={form.donorName}
+              onChange={e => setForm(f => ({ ...f, donorName: e.target.value }))}
+            />
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Food description *</label>
             <input
@@ -108,23 +138,59 @@ export default function DonorPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Pickup deadline</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Prepared at *</label>
               <input
+                required
+                type="time"
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                value={form.preparedAt}
+                onChange={e => setForm(f => ({ ...f, preparedAt: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Pickup deadline *</label>
+              <input
+                required
                 type="time"
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                 value={form.deadline}
                 onChange={e => setForm(f => ({ ...f, deadline: e.target.value }))}
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Storage / temperature</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Storage / temperature *</label>
               <input
+                required
                 className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
                 placeholder="e.g. Hot-held above 60°C"
                 value={form.storage}
                 onChange={e => setForm(f => ({ ...f, storage: e.target.value }))}
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Pickup suburb / town *</label>
+              <input
+                required
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+                placeholder="e.g. Lismore"
+                value={form.location}
+                onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Pickup street address *</label>
+            <input
+              required
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-400"
+              placeholder="Street address, suburb"
+              value={form.pickupAddress}
+              onChange={e => setForm(f => ({ ...f, pickupAddress: e.target.value }))}
+            />
           </div>
 
           <div>
@@ -157,6 +223,7 @@ export default function DonorPage() {
             <p className="text-sm text-gray-600"><span className="font-medium">Food:</span> {form.food}</p>
             <p className="text-sm text-gray-600"><span className="font-medium">Quantity:</span> {form.quantity} {form.unit}</p>
             {form.deadline && <p className="text-sm text-gray-600"><span className="font-medium">Deadline:</span> {form.deadline}</p>}
+            {donation?.category && <p className="text-sm text-gray-600"><span className="font-medium">Category:</span> {donation.category}</p>}
             <p className="text-xs text-gray-400 mt-2">Donation ID: {donationId}</p>
           </div>
 

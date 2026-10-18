@@ -1,8 +1,9 @@
 import {
-  collection, doc, addDoc, updateDoc, onSnapshot,
-  query, where, orderBy, serverTimestamp, getDocs
+  collection, doc, onSnapshot,
+  query, where, orderBy, getDocs
 } from 'firebase/firestore'
 import { db } from './firebase'
+import { apiRequest } from './api'
 
 // ── Donations ──────────────────────────────────────────────
 
@@ -16,20 +17,20 @@ export function subscribeDonation(id, callback) {
 }
 
 export async function createDonation(data) {
-  return addDoc(collection(db, 'donations'), { ...data, createdAt: serverTimestamp(), state: 'Submitted' })
+  return apiRequest('/donations', { method: 'POST', body: JSON.stringify(data) })
 }
 
 export async function updateDonationState(id, state) {
-  return updateDoc(doc(db, 'donations', id), { state })
+  return apiRequest(`/donations/${id}/state`, {
+    method: 'PATCH',
+    body: JSON.stringify({ state }),
+  })
 }
 
 // ── Agent logs ─────────────────────────────────────────────
 
 export async function appendAgentLog(donationId, entry) {
-  return addDoc(collection(db, 'donations', donationId, 'agentLogs'), {
-    ...entry,
-    time: serverTimestamp(),
-  })
+  return apiRequest(`/donations/${donationId}/logs`, { method: 'POST', body: JSON.stringify(entry) })
 }
 
 export function subscribeAgentLogs(donationId, callback) {
@@ -54,22 +55,24 @@ export function subscribeAvailableDonations(callback) {
 }
 
 export async function respondToDonation(donationId, recipientId, action) {
-  return addDoc(collection(db, 'donations', donationId, 'recipientResponses'), {
-    recipientId,
-    action,
-    respondedAt: serverTimestamp(),
+  return apiRequest(`/donations/${donationId}/responses`, {
+    method: 'POST',
+    body: JSON.stringify({ recipientId, action }),
   })
 }
 
 // ── Pickup jobs (drivers) ──────────────────────────────────
 
 export function subscribePickupJobs(callback) {
-  const q = query(collection(db, 'pickupJobs'), where('status', '==', 'available'))
+  const q = query(collection(db, 'pickupJobs'))
   return onSnapshot(q, snap => callback(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
 }
 
 export async function updateJobStatus(jobId, status) {
-  return updateDoc(doc(db, 'pickupJobs', jobId), { status, updatedAt: serverTimestamp() })
+  return apiRequest(`/jobs/${jobId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
 }
 
 // ── Approvals ──────────────────────────────────────────────
@@ -80,5 +83,12 @@ export function subscribeApprovals(callback) {
 }
 
 export async function resolveApproval(approvalId, status) {
-  return updateDoc(doc(db, 'approvals', approvalId), { status, resolvedAt: serverTimestamp() })
+  return apiRequest(`/approvals/${approvalId}/resolve`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function coordinateDonation(donationId) {
+  return apiRequest(`/donations/${donationId}/coordinate`, { method: 'POST' })
 }

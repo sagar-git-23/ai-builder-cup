@@ -50,7 +50,8 @@ def match_recipients(donation_id: str):
         data = r.to_dict()
         accepts = data.get("accepts", [])
         capacity = float(data.get("capacity", 0))
-        if category in accepts and capacity >= quantity:
+        same_unit = str(data.get("capacityUnit", "")).casefold() == str(d.get("unit", "")).casefold()
+        if category in accepts and same_unit and capacity >= quantity and data.get("address"):
             matches.append({"id": r.id, **data})
 
     return matches

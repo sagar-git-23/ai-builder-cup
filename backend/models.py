@@ -1,6 +1,6 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from typing import List, Literal, Optional
 from enum import Enum
+from pydantic import BaseModel, Field
 
 
 class DonationState(str, Enum):
@@ -20,20 +20,24 @@ class AllocationItem(BaseModel):
     recipientId: str
     recipientName: str
     quantity: float
-    status: str = "pending"
+    status: Literal["pending", "accepted", "declined", "confirmed"] = "pending"
+    jobId: Optional[str] = None
 
 
 class DonationCreate(BaseModel):
-    food: str
-    quantity: float
+    food: str = Field(min_length=1, max_length=500)
+    quantity: float = Field(gt=0)
     unit: str = "portions"
-    deadline: Optional[str] = None
-    storage: Optional[str] = None
-    notes: Optional[str] = None
-    donorName: Optional[str] = None
-    donorId: Optional[str] = None
+    preparedAt: Optional[str] = Field(default=None, max_length=20)
+    deadline: Optional[str] = Field(default=None, max_length=20)
+    storage: Optional[str] = Field(default=None, max_length=300)
+    location: Optional[str] = Field(default=None, max_length=500)
+    pickupAddress: Optional[str] = Field(default=None, max_length=500)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    donorName: Optional[str] = Field(default=None, max_length=200)
+    donorId: Optional[str] = Field(default=None, max_length=200)
     category: Optional[str] = None
-    missingFields: Optional[List[str]] = []
+    missingFields: List[str] = Field(default_factory=list)
 
 
 class DonationStateUpdate(BaseModel):
@@ -48,15 +52,16 @@ class RecipientCreate(BaseModel):
     name: str
     location: str
     capacity: float
+    capacityUnit: str
     accepts: List[str]
     transport: bool = False
-    address: Optional[str] = None
+    address: str
     contact: Optional[str] = None
 
 
 class RecipientResponse(BaseModel):
     recipientId: str
-    action: str  # "accepted" | "declined"
+    action: Literal["accepted", "declined"]
 
 
 class PickupJobCreate(BaseModel):
@@ -74,7 +79,15 @@ class PickupJobCreate(BaseModel):
 
 
 class JobStatusUpdate(BaseModel):
-    status: str  # available | accepted | picked_up | completed | declined
+    status: Literal[
+        "available",
+        "accepted",
+        "en_route_pickup",
+        "picked_up",
+        "en_route_dropoff",
+        "completed",
+        "declined",
+    ]
 
 
 class ApprovalCreate(BaseModel):
@@ -84,7 +97,7 @@ class ApprovalCreate(BaseModel):
 
 
 class ApprovalResolve(BaseModel):
-    status: str  # approved | rejected
+    status: Literal["approved", "rejected"]
 
 
 class AgentLogEntry(BaseModel):

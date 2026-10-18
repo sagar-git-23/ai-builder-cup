@@ -11,6 +11,7 @@ export default function DriverPage() {
   const [activeJob, setActiveJob] = useState(null)
   const [step, setStep] = useState(0)
   const [delivered, setDelivered] = useState(false)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     const unsub = subscribePickupJobs((data) => {
@@ -20,24 +21,67 @@ export default function DriverPage() {
     return () => unsub()
   }, [])
 
+  useEffect(() => {
+    if (activeJob) return
+    const stepByStatus = {
+      accepted: 0,
+      en_route_pickup: 1,
+      picked_up: 2,
+      en_route_dropoff: 3,
+    }
+    const inProgress = jobs.find(job => Object.hasOwn(stepByStatus, job.status))
+    if (inProgress) {
+      setActiveJob(inProgress)
+      setStep(stepByStatus[inProgress.status])
+      setDelivered(false)
+    }
+  }, [jobs, activeJob])
+
   const handleAccept = async (job) => {
-    await updateJobStatus(job.id, 'accepted')
-    setActiveJob(job)
-    setStep(0)
-    setDelivered(false)
+    setError('')
+    try {
+      await updateJobStatus(job.id, 'accepted')
+      setActiveJob(job)
+      setStep(0)
+      setDelivered(false)
+    } catch (err) {
+      setError(err.message || 'Could not accept this pickup job.')
+    }
   }
 
   const handleDecline = async (id) => {
-    await updateJobStatus(id, 'declined')
-    if (activeJob?.id === id) setActiveJob(null)
+    setError('')
+    try {
+      await updateJobStatus(id, 'declined')
+      if (activeJob?.id === id) setActiveJob(null)
+    } catch (err) {
+      setError(err.message || 'Could not decline this pickup job.')
+    }
   }
 
   const advance = async () => {
     if (step < stepLabels.length - 1) {
+      const nextStepStatus = {
+        1: 'en_route_pickup',
+        2: 'picked_up',
+        3: 'en_route_dropoff',
+      }[step + 1]
+      if (nextStepStatus) {
+        try {
+          await updateJobStatus(activeJob.id, nextStepStatus)
+        } catch (err) {
+          setError(err.message || 'Could not update pickup progress.')
+          return
+        }
+      }
       setStep(s => s + 1)
     } else {
-      await updateJobStatus(activeJob.id, 'completed')
-      setDelivered(true)
+      try {
+        await updateJobStatus(activeJob.id, 'completed')
+        setDelivered(true)
+      } catch (err) {
+        setError(err.message || 'Could not confirm delivery.')
+      }
     }
   }
 
@@ -50,6 +94,8 @@ export default function DriverPage() {
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Volunteer Driver</h1>
         <p className="text-sm text-gray-500">Pick up available delivery jobs assigned by the agent and confirm handoffs.</p>
       </div>
+
+      {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
 
       {activeJob && !delivered && (
         <div className="bg-white rounded-2xl shadow p-5 border-l-4 border-green-500">
@@ -148,8 +194,9 @@ export default function DriverPage() {
 
                 <div className="flex gap-3">
                   <button
+                    disabled={Boolean(activeJob && !delivered)}
                     onClick={() => handleAccept(job)}
-                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+                    className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
                   >
                     <CheckCircle size={15} /> Accept Job
                   </button>
